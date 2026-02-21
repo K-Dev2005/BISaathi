@@ -1,0 +1,17 @@
+[
+  { "cml_code": "CM/L-1234567", "product_name": "Electrical Switch", "category": "Electrical", "status": "valid", "expiry": "2027-03-01", "manufacturer": "ABC Industries" },
+  { "cml_code": "CM/L-9876543", "product_name": "Pressure Cooker", "category": "Kitchen", "status": "expired", "expiry": "2023-11-15", "manufacturer": "XYZ Corp" },
+  { "cml_code": "CM/L-5551234", "product_name": "Helmet", "category": "Safety", "status": "suspended", "expiry": "2025-01-01", "manufacturer": "SafeHead Ltd" },
+  { "cml_code": "CM/L-1111111", "product_name": "Steel Water Bottle", "category": "Kitchen", "status": "valid", "expiry": "2028-06-01", "manufacturer": "PureSteel Co" },
+  { "cml_code": "CM/L-2222222", "product_name": "MCB Circuit Breaker", "category": "Electrical", "status": "valid", "expiry": "2026-12-31", "manufacturer": "ElecSafe Ltd" },
+  { "cml_code": "CM/L-3333333", "product_name": "LPG Rubber Hose", "category": "Gas Equipment", "status": "expired", "expiry": "2022-08-10", "manufacturer": "FlexiGas India" },
+  { "cml_code": "CM/L-4444444", "product_name": "Cement Bag 50kg", "category": "Construction", "status": "valid", "expiry": "2027-09-15", "manufacturer": "BuildStrong Ltd" },
+  { "cml_code": "CM/L-5555555", "product_name": "Baby Food Container", "category": "Food", "status": "suspended", "expiry": "2024-01-01", "manufacturer": "NutriKid Co" },
+  { "cml_code": "CM/L-6666666", "product_name": "Electric Iron", "category": "Appliances", "status": "valid", "expiry": "2026-05-20", "manufacturer": "HomeApply Inc" },
+  { "cml_code": "CM/L-7777777", "product_name": "PVC Pipe 1 inch", "category": "Plumbing", "status": "valid", "expiry": "2029-01-01", "manufacturer": "FlowPipe India" },
+  { "cml_code": "CM/L-8888888", "product_name": "Bicycle Tyre", "category": "Automotive", "status": "expired", "expiry": "2021-03-30", "manufacturer": "RollFast Ltd" },
+  { "cml_code": "CM/L-9999999", "product_name": "LED Bulb 9W", "category": "Electrical", "status": "valid", "expiry": "2027-11-11", "manufacturer": "BrightLED Co" },
+  { "cml_code": "CM/L-1010101", "product_name": "Fire Extinguisher", "category": "Safety", "status": "valid", "expiry": "2028-02-14", "manufacturer": "SafeGuard India" },
+  { "cml_code": "CM/L-1212121", "product_name": "Packaged Drinking Water", "category": "Food", "status": "suspended", "expiry": "2023-07-07", "manufacturer": "ClearDrop Ltd" },
+  { "cml_code": "CM/L-1313131", "product_name": "Wall Paint 20L", "category": "Construction", "status": "valid", "expiry": "2026-10-10", "manufacturer": "ColorCraft India" }
+]
