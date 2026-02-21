@@ -1,0 +1,8 @@
+{
+  "name": "bis-saathi-root",
+  "private": true,
+  "scripts": {
+    "client:build": "cd bisaathi-client && npm install && npm run build",
+    "server:build": "cd bisaathi-server && npm install"
+  }
+}
