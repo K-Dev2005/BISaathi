@@ -1,108 +1,121 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const auth = require('../middleware/userAuthMiddleware');
+const supabase = require('../lib/supabase');
+const router = express.Router();
 
-// Register
+// REGISTER
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ message: 'User already exists' });
 
-    user = new User({ name, email, password });
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-    await user.save();
+    // Check if user exists
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
 
-    const payload = { id: user._id, role: 'user' };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+    if (existing) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
 
-    res.json({ 
-      token, 
-      user: { 
-        _id: user._id, 
-        id: user._id,
-        name: user.name, 
-        email: user.email,
-        score: user.score,
-        scans: user.scans,
-        violations_caught: user.violations_caught,
-        complaints_filed: user.complaints_filed,
-        badges: user.badges,
-        missions_done: user.missions_done
-      } 
-    });
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .insert([{ name, email, password: hashedPassword }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const token = jwt.sign(
+      { id: user.id, role: 'user' },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, score: user.score } });
   } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ message: `Server error: ${err.message}` });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Login
+// LOGIN
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    let user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
 
-    const payload = { id: user._id, role: 'user' };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { id: user.id, role: 'user' },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
 
-    res.json({ 
-      token, 
-      user: { 
-        _id: user._id, 
-        id: user._id,
-        name: user.name, 
-        email: user.email,
-        score: user.score,
-        scans: user.scans,
-        violations_caught: user.violations_caught,
-        complaints_filed: user.complaints_filed,
-        badges: user.badges,
-        missions_done: user.missions_done
-      } 
-    });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, score: user.score, badges: user.badges, role: user.role } });
   } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ message: `Server error: ${err.message}` });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Get Me
-router.get('/me', auth, async (req, res) => {
+// GET PROFILE
+router.get('/me', require('../middleware/userAuthMiddleware'), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password').lean();
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({ ...user, id: user._id });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, name, email, score, scans, violations_caught, complaints_filed, complaints_verified, badges, missions_done, pending_notifications, role, created_at')
+      .eq('id', req.user.id)
+      .single();
 
-// Update Profile (Score, etc.)
-router.patch('/me', auth, async (req, res) => {
-  try {
-    const { score, scans, violations_caught, complaints_filed, badges, missions_done } = req.body;
-    const user = await User.findById(req.user.id);
-    
-    if (score !== undefined) user.score = score;
-    if (scans !== undefined) user.scans = scans;
-    if (violations_caught !== undefined) user.violations_caught = violations_caught;
-    if (complaints_filed !== undefined) user.complaints_filed = complaints_filed;
-    if (badges) user.badges = badges;
-    if (missions_done) user.missions_done = missions_done;
+    if (error || !user) return res.status(404).json({ message: 'User not found' });
 
-    await user.save();
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// UPDATE PROFILE (score, badges, missions)
+router.patch('/me', require('../middleware/userAuthMiddleware'), async (req, res) => {
+  try {
+    const { score, badges, missions_done, scans, violations_caught, complaints_filed, pending_notifications } = req.body;
+
+    const updates = {};
+    if (score !== undefined) updates.score = score;
+    if (badges !== undefined) updates.badges = badges;
+    if (missions_done !== undefined) updates.missions_done = missions_done;
+    if (scans !== undefined) updates.scans = scans;
+    if (violations_caught !== undefined) updates.violations_caught = violations_caught;
+    if (complaints_filed !== undefined) updates.complaints_filed = complaints_filed;
+    if (pending_notifications !== undefined) updates.pending_notifications = pending_notifications;
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', req.user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 

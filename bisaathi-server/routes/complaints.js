@@ -1,152 +1,202 @@
 const express = require('express');
-const router = express.Router();
-const Complaint = require('../models/Complaint');
-const User = require('../models/User');
+const supabase = require('../lib/supabase');
 const adminAuth = require('../middleware/adminAuthMiddleware');
+const router = express.Router();
 
-// Submit new complaint (Public or Logged-in)
+// SUBMIT COMPLAINT (public)
 router.post('/', async (req, res) => {
   try {
     const { cml_code, product_name, issue_type, complaint_text, latitude, longitude, location_label, user_id } = req.body;
-    
-    const complaint = new Complaint({
-      cml_code,
-      product_name,
-      issue_type,
-      complaint_text,
-      latitude,
-      longitude,
-      location_label,
-      user_id: user_id || null
-    });
 
-    await complaint.save();
+    const { data, error } = await supabase
+      .from('complaints')
+      .insert([{ cml_code, product_name, issue_type, complaint_text, latitude, longitude, location_label, user_id: user_id || null }])
+      .select()
+      .single();
 
-    if (user_id) {
-      await User.findByIdAndUpdate(user_id, { $inc: { complaints_filed: 1 } });
-    }
-
-    res.status(201).json(complaint);
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Get all complaints
+// GET ALL COMPLAINTS (admin, with filters + pagination)
 router.get('/', adminAuth, async (req, res) => {
   try {
-    const { status, issue_type, has_user } = req.query;
-    console.log('--- ADMIN FETCH COMPLAINTS ---');
-    console.log('Query Params:', req.query);
-    
-    let query = {};
-    if (status && status !== 'All') query.status = status;
-    if (issue_type && issue_type !== 'All') query.issue_type = issue_type;
-    if (has_user === 'Logged-in user') query.user_id = { $ne: null };
-    if (has_user === 'Anonymous') query.user_id = null;
+    const { status, issue_type, search, page = 1, limit = 10, from_date, to_date } = req.query;
+    const offset = (page - 1) * limit;
 
-    const complaints = await Complaint.find(query).sort({ submitted_at: -1 }).populate('user_id', 'name email score');
-    console.log('Count Found:', complaints.length);
-    console.log('------------------------------');
-    res.json(complaints);
+    let query = supabase
+      .from('complaints')
+      .select('*, users(name, email, score, role)', { count: 'exact' })
+      .order('submitted_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status && status !== 'all') query = query.eq('status', status);
+    if (issue_type && issue_type !== 'all') query = query.eq('issue_type', issue_type);
+    if (search) query = query.or(`cml_code.ilike.%${search}%,product_name.ilike.%${search}%`);
+    if (from_date) query = query.gte('submitted_at', from_date);
+    if (to_date) query = query.lte('submitted_at', to_date);
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+
+    res.json({ complaints: data, total: count, page: Number(page), pages: Math.ceil(count / limit) });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Get stats
+// GET STATS (admin dashboard cards)
 router.get('/stats', adminAuth, async (req, res) => {
   try {
-    const total = await Complaint.countDocuments();
-    const pending = await Complaint.countDocuments({ status: 'pending' });
-    const reviewing = await Complaint.countDocuments({ status: 'reviewing' });
-    const resolved = await Complaint.countDocuments({ status: 'resolved' });
-    const rejected = await Complaint.countDocuments({ status: 'rejected' });
+    const { count: total } = await supabase.from('complaints').select('*', { count: 'exact', head: true });
+    const { count: pending } = await supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+    const { count: reviewing } = await supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('status', 'reviewing');
+    const { count: resolved } = await supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
+    const { count: rejected } = await supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('status', 'rejected');
 
-    const statsByType = await Complaint.aggregate([
-      { $group: { _id: '$issue_type', count: { $sum: 1 } } }
-    ]);
+    // Count by issue type
+    const { data: byType } = await supabase.from('complaints').select('issue_type');
+    const issueTypeCounts = byType.reduce((acc, c) => {
+      acc[c.issue_type] = (acc[c.issue_type] || 0) + 1;
+      return acc;
+    }, {});
 
-    res.json({ total, pending, reviewing, resolved, rejected, statsByType });
+    // Total points awarded
+    const { count: pointsAwarded } = await supabase.from('complaints').select('*', { count: 'exact', head: true }).eq('points_awarded', true);
+
+    res.json({ total, pending, reviewing, resolved, rejected, issueTypeCounts, pointsAwarded, pointsTotal: pointsAwarded * 100 });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Get by day (last 7 days)
+// GET COMPLAINTS BY DAY — last 7 days (admin line chart)
 router.get('/by-day', adminAuth, async (req, res) => {
   try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const { data, error } = await supabase
+      .from('complaints')
+      .select('submitted_at')
+      .gte('submitted_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
 
-    const statsByDay = await Complaint.aggregate([
-      { $match: { submitted_at: { $gte: sevenDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$submitted_at" } },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    if (error) throw error;
 
-    res.json(statsByDay);
+    const days = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      days[key] = 0;
+    }
+
+    data.forEach(c => {
+      const key = c.submitted_at.split('T')[0];
+      if (days[key] !== undefined) days[key]++;
+    });
+
+    res.json(Object.entries(days).map(([date, count]) => ({ date, count })));
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Top Validators
+// GET TOP VALIDATORS (admin dashboard)
 router.get('/top-validators', adminAuth, async (req, res) => {
   try {
-    const users = await User.find().sort({ score: -1 }).limit(5).select('name score role scans complaints_filed complaints_verified');
-    res.json(users);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, score, role, scans, complaints_filed, complaints_verified')
+      .order('score', { ascending: false })
+      .limit(5);
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Get single complaint
+// GET SINGLE COMPLAINT (admin)
 router.get('/:id', adminAuth, async (req, res) => {
   try {
-    const complaint = await Complaint.findById(req.params.id).populate('user_id', 'name email score role');
-    if (!complaint) return res.status(404).json({ message: 'Complaint not found' });
-    res.json(complaint);
+    const { data, error } = await supabase
+      .from('complaints')
+      .select('*, users(id, name, email, score, role)')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !data) return res.status(404).json({ message: 'Complaint not found' });
+    res.json(data);
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Admin: Update status + award points
+// UPDATE COMPLAINT STATUS + ADMIN NOTES (admin)
+// Auto-awards +100 pts if resolved and user exists
 router.patch('/:id', adminAuth, async (req, res) => {
   try {
     const { status, admin_notes } = req.body;
-    const complaint = await Complaint.findById(req.params.id);
-    if (!complaint) return res.status(404).json({ message: 'Complaint not found' });
 
-    const oldStatus = complaint.status;
-    complaint.status = status;
-    if (admin_notes) complaint.admin_notes = admin_notes;
+    const { data: complaint, error: fetchError } = await supabase
+      .from('complaints')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
-    if (status === 'resolved' && oldStatus !== 'resolved' && complaint.user_id && !complaint.points_awarded) {
-      // Award 100 bonus points
-      const user = await User.findById(complaint.user_id);
+    if (fetchError || !complaint) return res.status(404).json({ message: 'Complaint not found' });
+
+    const updates = {};
+    if (status) updates.status = status;
+    if (admin_notes !== undefined) updates.admin_notes = admin_notes;
+
+    // Auto-award +100 pts if resolving and not already awarded
+    let pointsAwarded = false;
+    if (status === 'resolved' && !complaint.points_awarded && complaint.user_id) {
+
+      // Get current user score
+      const { data: user } = await supabase
+        .from('users')
+        .select('score, complaints_verified, pending_notifications')
+        .eq('id', complaint.user_id)
+        .single();
+
       if (user) {
-        user.score += 100;
-        user.complaints_verified += 1;
-        user.pending_notifications.push({
-          message: `🌟 BIS verified your complaint about ${complaint.product_name} — you earned +100 pts!`,
-          points: 100
-        });
-        await user.save();
-        complaint.points_awarded = true;
+        const newNotification = {
+          message: `Your complaint about ${complaint.product_name} was verified by BIS!`,
+          points: 100,
+          seen: false,
+          created_at: new Date().toISOString()
+        };
+
+        await supabase
+          .from('users')
+          .update({
+            score: user.score + 100,
+            complaints_verified: user.complaints_verified + 1,
+            pending_notifications: [...(user.pending_notifications || []), newNotification]
+          })
+          .eq('id', complaint.user_id);
+
+        updates.points_awarded = true;
+        pointsAwarded = true;
       }
     }
 
-    await complaint.save();
-    res.json(complaint);
+    const { data: updated, error: updateError } = await supabase
+      .from('complaints')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({ complaint: updated, pointsAwarded, message: pointsAwarded ? `+100 pts awarded to user` : 'Updated successfully' });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: err.message });
   }
 });
 
