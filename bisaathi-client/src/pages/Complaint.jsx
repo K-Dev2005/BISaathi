@@ -75,7 +75,7 @@ A Concerned Citizen`;
         complaint_text: complaintText,
         latitude: geo.lat,
         longitude: geo.lng,
-        user_id: user?.id || null
+        user_id: user?._id || user?.id || null
       };
 
       await api.post('/api/complaints', payload);

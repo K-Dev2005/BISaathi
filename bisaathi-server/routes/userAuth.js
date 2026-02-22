@@ -20,9 +20,24 @@ router.post('/register', async (req, res) => {
     const payload = { id: user._id, role: 'user' };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ 
+      token, 
+      user: { 
+        _id: user._id, 
+        id: user._id,
+        name: user.name, 
+        email: user.email,
+        score: user.score,
+        scans: user.scans,
+        violations_caught: user.violations_caught,
+        complaints_filed: user.complaints_filed,
+        badges: user.badges,
+        missions_done: user.missions_done
+      } 
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error("Registration error:", err);
+    res.status(500).json({ message: `Server error: ${err.message}` });
   }
 });
 
@@ -39,17 +54,33 @@ router.post('/login', async (req, res) => {
     const payload = { id: user._id, role: 'user' };
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ 
+      token, 
+      user: { 
+        _id: user._id, 
+        id: user._id,
+        name: user.name, 
+        email: user.email,
+        score: user.score,
+        scans: user.scans,
+        violations_caught: user.violations_caught,
+        complaints_filed: user.complaints_filed,
+        badges: user.badges,
+        missions_done: user.missions_done
+      } 
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error("Login error:", err);
+    res.status(500).json({ message: `Server error: ${err.message}` });
   }
 });
 
 // Get Me
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
-    res.json(user);
+    const user = await User.findById(req.user.id).select('-password').lean();
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ ...user, id: user._id });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

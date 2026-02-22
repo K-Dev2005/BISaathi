@@ -150,7 +150,7 @@ const Dashboard = ({ user, userData = {} }) => {
                      {[1,2,3,4,5].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl" />)}
                    </div>
                  ) : leaderboard.map((l, i) => (
-                   <div key={l._id} className={`flex items-center justify-between p-3 rounded-xl ${l._id === user?.id ? 'bg-[#F5A623]/10 border border-[#F5A623]' : 'hover:bg-gray-50'}`}>
+                   <div key={l._id} className={`flex items-center justify-between p-3 rounded-xl ${(l._id === user?._id || l._id === user?.id) ? 'bg-[#F5A623]/10 border border-[#F5A623]' : 'hover:bg-gray-50'}`}>
                      <div className="flex items-center space-x-3">
                        <span className={`w-6 h-6 flex items-center justify-center font-black text-xs rounded-full ${i === 0 ? 'bg-amber-400 text-white' : i === 1 ? 'bg-gray-300 text-white' : i === 2 ? 'bg-orange-300 text-white' : 'text-gray-400'}`}>{i + 1}</span>
                        <div className="flex flex-col">

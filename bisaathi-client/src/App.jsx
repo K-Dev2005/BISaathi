@@ -42,9 +42,23 @@ function App() {
     try {
       const res = await api.get('/api/auth/user/me');
       setUser(res.data);
-      setUserData(res.data);
+      setUserData({
+        score: res.data.score || 0,
+        scans: res.data.scans || 0,
+        violations: res.data.violations_caught || 0,
+        complaints: res.data.complaints_filed || 0,
+        badges: res.data.badges || [],
+        missions: res.data.missions_done || []
+      });
       // Update local storage with live data
-      saveLocalData(res.data);
+      saveLocalData({
+        score: res.data.score,
+        scans: res.data.scans,
+        violations: res.data.violations_caught,
+        complaints: res.data.complaints_filed,
+        badges: res.data.badges,
+        missions: res.data.missions_done
+      });
     } catch (err) {
       localStorage.removeItem('bis_user_token');
     }
@@ -74,14 +88,29 @@ function App() {
           badges: [...new Set([...(userObj.badges || []), ...(guestData.badges || [])])],
           missions_done: [...new Set([...(userObj.missions_done || []), ...(guestData.missions || [])])]
         });
-        setUserData(res.data);
+        const updated = {
+          score: res.data.score,
+          scans: res.data.scans,
+          violations: res.data.violations_caught,
+          complaints: res.data.complaints_filed,
+          badges: res.data.badges,
+          missions: res.data.missions_done
+        };
+        setUserData(updated);
         setUser(res.data);
-        saveLocalData(res.data);
+        saveLocalData(updated);
       } catch (err) {
         console.error("Merge error:", err);
       }
     } else {
-      setUserData(userObj);
+      setUserData({
+        score: userObj.score || 0,
+        scans: userObj.scans || 0,
+        violations: userObj.violations_caught || 0,
+        complaints: userObj.complaints_filed || 0,
+        badges: userObj.badges || [],
+        missions: userObj.missions_done || []
+      });
     }
   };
 
