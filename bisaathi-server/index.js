@@ -14,13 +14,18 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://bisaathi.vercel.app',
-      'https://bisaathi-server.vercel.app',
+      process.env.CLIENT_URL || 'https://bisaathi.vercel.app',
     ];
     
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    // Allow all vercel.app domains in production, localhost in dev
+    const isAllowed = allowedOrigins.includes(origin) || 
+                     origin.endsWith('.vercel.app') || 
+                     origin.startsWith('http://localhost');
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
